@@ -1,0 +1,23 @@
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/budgetpool/
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv build
+      - name: Audit sdist
+        run: |
+          tar tzf dist/*.tar.gz | grep -iE '\.env|\.token|\.secret|\.key|\.pem|credential' && exit 1 || true
+      - uses: pypa/gh-action-pypi-publish@release/v1
