@@ -1,0 +1,62 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "budgetpool"
+version = "0.1.0"
+description = "Memory-budget-aware parallel execution pool for Python"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.10"
+authors = [{ name = "ajtgjmdjp" }]
+keywords = [
+    "parallel",
+    "multiprocessing",
+    "memory",
+    "resource-management",
+    "ProcessPoolExecutor",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: System :: Monitoring",
+    "Typing :: Typed",
+]
+dependencies = ["psutil>=5.9.0"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "pytest-cov", "mypy", "ruff"]
+
+[project.urls]
+Homepage = "https://github.com/ajtgjmdjp/budgetpool"
+Repository = "https://github.com/ajtgjmdjp/budgetpool"
+Issues = "https://github.com/ajtgjmdjp/budgetpool/issues"
+
+[tool.hatch.build.targets.sdist]
+include = ["src/budgetpool/"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/budgetpool"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
