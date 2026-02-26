@@ -30,8 +30,13 @@ jobs:
       - name: Check sdist for secrets
         run: |
           tar tzf dist/*.tar.gz | grep -iE '\.env|\.token|\.secret|\.key|\.pem|credential' && exit 1 || true
+          mkdir -p /tmp/sdist-check
           tar xzf dist/*.tar.gz -C /tmp/sdist-check
-          gitleaks detect --source /tmp/sdist-check --no-git --verbose
+      - uses: gitleaks/gitleaks-action@v2
+        with:
+          source: /tmp/sdist-check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   gitleaks:
     runs-on: ubuntu-latest
