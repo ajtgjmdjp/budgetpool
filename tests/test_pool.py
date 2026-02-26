@@ -6,7 +6,7 @@ import time
 
 import pytest
 
-from budgetpool._pool import BudgetPool, MemoryBudgetExceeded
+from budgetpool._pool import BudgetPool, MemoryBudgetExceeded, PoolStats
 
 
 def _identity(x: int) -> int:
@@ -121,3 +121,42 @@ class TestBudgetPoolProperties:
             memory_per_worker_gb=0.1,
         ) as pool:
             assert pool.memory_budget_gb == 8.0
+
+
+def _raise_error(x: int) -> int:
+    raise ValueError("test error")
+
+
+class TestPoolStats:
+    def test_stats_after_map(self) -> None:
+        with BudgetPool(memory_per_worker_gb=0.1) as pool:
+            list(pool.map(_identity, range(10)))
+            assert pool.stats.tasks_submitted == 10
+            assert pool.stats.tasks_completed == 10
+            assert pool.stats.tasks_failed == 0
+            assert pool.stats.peak_memory_percent > 0
+
+    def test_stats_failed_tasks(self) -> None:
+        with BudgetPool(memory_per_worker_gb=0.1) as pool:
+            future = pool.submit(_raise_error, 1)
+            try:
+                future.result(timeout=5)
+            except ValueError:
+                pass
+            assert pool.stats.tasks_failed == 1
+
+    def test_on_task_complete_callback(self) -> None:
+        completed: list[int] = []
+
+        def on_complete(future: object) -> None:
+            completed.append(1)
+
+        with BudgetPool(
+            memory_per_worker_gb=0.1,
+            on_task_complete=on_complete,
+        ) as pool:
+            list(pool.map(_identity, range(5)))
+            # Give callbacks time to fire
+            import time
+            time.sleep(0.1)
+            assert len(completed) == 5

@@ -7,7 +7,7 @@ import os
 import threading
 import time
 from concurrent.futures import Future, ProcessPoolExecutor
-from concurrent.futures._base import FIRST_COMPLETED
+from dataclasses import dataclass, field
 from typing import Any, Callable, Iterable, Iterator
 
 import psutil
@@ -16,7 +16,17 @@ from budgetpool._monitor import MemoryInfo, get_memory_info, safe_worker_count
 
 logger = logging.getLogger("budgetpool")
 
-_UNSET = object()
+
+@dataclass
+class PoolStats:
+    """Cumulative statistics for a BudgetPool instance."""
+
+    tasks_submitted: int = 0
+    tasks_completed: int = 0
+    tasks_failed: int = 0
+    memory_warnings: int = 0
+    peak_memory_percent: float = 0.0
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
 
 class MemoryBudgetExceeded(RuntimeError):
@@ -70,6 +80,7 @@ class BudgetPool:
         warn_at_percent: float | None = 85.0,
         fail_at_percent: float | None = 95.0,
         mp_context: Any = None,
+        on_task_complete: Callable[[Future[Any]], None] | None = None,
     ) -> None:
         if memory_per_worker_gb <= 0:
             raise ValueError("memory_per_worker_gb must be positive")
@@ -112,9 +123,10 @@ class BudgetPool:
             max_workers=self._num_workers,
             mp_context=mp_context,
         )
-        self._pending_futures: set[Future[Any]] = set()
-        self._lock = threading.Lock()
+        self._semaphore = threading.Semaphore(self._max_pending)
         self._closed = False
+        self._stats = PoolStats()
+        self._on_task_complete = on_task_complete
 
     @property
     def num_workers(self) -> int:
@@ -131,6 +143,11 @@ class BudgetPool:
         """Current system memory snapshot."""
         return get_memory_info()
 
+    @property
+    def stats(self) -> PoolStats:
+        """Cumulative pool statistics."""
+        return self._stats
+
     def submit(
         self, fn: Callable[..., Any], /, *args: Any, **kwargs: Any
     ) -> Future[Any]:
@@ -142,13 +159,11 @@ class BudgetPool:
             raise RuntimeError("BudgetPool is shut down")
 
         self._check_memory()
-        self._apply_backpressure()
+        self._semaphore.acquire()
 
         future = self._executor.submit(fn, *args, **kwargs)
-
-        with self._lock:
-            self._pending_futures.add(future)
-
+        with self._stats._lock:
+            self._stats.tasks_submitted += 1
         future.add_done_callback(self._on_future_done)
         return future
 
@@ -199,6 +214,10 @@ class BudgetPool:
         """Check memory and warn/fail if thresholds exceeded."""
         info = get_memory_info()
 
+        with self._stats._lock:
+            if info.percent > self._stats.peak_memory_percent:
+                self._stats.peak_memory_percent = info.percent
+
         if self._fail_at_percent is not None and info.percent >= self._fail_at_percent:
             raise MemoryBudgetExceeded(
                 budget_gb=self._budget_gb,
@@ -206,6 +225,8 @@ class BudgetPool:
             )
 
         if self._warn_at_percent is not None and info.percent >= self._warn_at_percent:
+            with self._stats._lock:
+                self._stats.memory_warnings += 1
             logger.warning(
                 "BudgetPool: memory at %.1f%% (%s/%sGB). "
                 "Consider reducing workload.",
@@ -214,17 +235,13 @@ class BudgetPool:
                 info.total_gb,
             )
 
-    def _apply_backpressure(self) -> None:
-        """Block until pending futures drop below max_pending."""
-        while True:
-            with self._lock:
-                pending = len(self._pending_futures)
-            if pending < self._max_pending:
-                return
-            # Wait for at least one to complete
-            time.sleep(0.01)
-
     def _on_future_done(self, future: Future[Any]) -> None:
-        """Remove completed future from pending set."""
-        with self._lock:
-            self._pending_futures.discard(future)
+        """Release semaphore slot and update stats when a task completes."""
+        with self._stats._lock:
+            if future.exception() is not None:
+                self._stats.tasks_failed += 1
+            else:
+                self._stats.tasks_completed += 1
+        self._semaphore.release()
+        if self._on_task_complete is not None:
+            self._on_task_complete(future)

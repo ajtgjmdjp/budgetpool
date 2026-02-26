@@ -95,10 +95,23 @@ print(f"Safe worker count: {n}")
 | `warn_at_percent` | `float \| None` | `85.0` | Log warning at this memory % |
 | `fail_at_percent` | `float \| None` | `95.0` | Raise error at this memory % |
 | `mp_context` | | `None` | Multiprocessing start method |
+| `on_task_complete` | `Callable \| None` | `None` | Callback fired on each task completion |
 
 **Methods**: `submit()`, `map()`, `shutdown()` — same signatures as `ProcessPoolExecutor`.
 
-**Properties**: `num_workers`, `memory_budget_gb`, `memory_info`.
+**Properties**: `num_workers`, `memory_budget_gb`, `memory_info`, `stats`.
+
+### `PoolStats`
+
+Cumulative statistics available via `pool.stats`:
+
+| Field | Type | Description |
+|---|---|---|
+| `tasks_submitted` | `int` | Total tasks submitted |
+| `tasks_completed` | `int` | Successfully completed tasks |
+| `tasks_failed` | `int` | Tasks that raised exceptions |
+| `memory_warnings` | `int` | Times memory warning threshold was hit |
+| `peak_memory_percent` | `float` | Highest observed system memory % |
 
 ### `safe_worker_count(memory_per_worker_gb, max_workers=None) → int`
 
@@ -107,6 +120,26 @@ Standalone function to calculate safe worker count without creating a pool.
 ### `get_memory_info() → MemoryInfo`
 
 Returns a `MemoryInfo` dataclass with `total_gb`, `available_gb`, `used_gb`, `percent`, and `free_for_workers_gb`.
+
+## CLI
+
+Check system memory and safe worker counts:
+
+```bash
+$ python -m budgetpool status
+System Memory
+  Total:          16.0 GB
+  Available:      6.5 GB
+  Used:           8.1 GB (60%)
+  Free for workers: 4.5 GB
+
+Safe Worker Counts
+  0.5 GB/worker → 8 workers
+  1.0 GB/worker → 4 workers
+  2.0 GB/worker → 2 workers
+  4.0 GB/worker → 1 workers
+  8.0 GB/worker → 1 workers
+```
 
 ## Container Support
 

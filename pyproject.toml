@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "budgetpool"
-version = "0.1.0"
+version = "0.2.0"
 description = "Memory-budget-aware parallel execution pool for Python"
 readme = "README.md"
 license = "Apache-2.0"
